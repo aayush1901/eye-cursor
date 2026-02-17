@@ -1,50 +1,95 @@
-# Welcome to your Expo app 👋
+# 👁️ Eye-Cursor
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+An innovative eye-tracking-based cursor control system built across multiple platforms — mobile, web and backend services.  
+This project enables users to interact with devices using eye movements, combining **React Native**, **web frontend**, and a powerful **backend API**.
 
-## Get started
+---
 
-1. Install dependencies
+## 🧠 What Is Eye-Cursor?
 
-   ```bash
-   npm install
-   ```
+Eye-Cursor is a cross-platform project that tracks eye movement using device cameras and translates this into cursor interactions and user actions.  
+With this system, you can:
 
-2. Start the app
+✨ Move the cursor using eye gaze  
+✨ Click or interact via eye patterns  
+✨ Use it on Android & iOS (via React Native)  
+✨ Access a web frontend interface  
+✨ Connect to backend APIs for extended functionality
 
-   ```bash
-   npx expo start
-   ```
+---
 
-In the output, you'll find options to open the app in a
+## 📁 Project Structure
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+eye-cursor/
+├── backend/ # Server / API logic
+├── frontend/ # Web application (UI & interactions)
+├── native-app/ # React Native app for mobile
+├── .gitignore
+├── requirements.txt
+└── README.md
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+Each folder encapsulates a core part of the system:
 
-## Get a fresh project
+- **backend/** – APIs to handle eye-tracking data and logic  
+- **frontend/** – Browser-based UI for visual feedback & controls  
+- **native-app/** – Mobile app built using React Native for eye tracking support
 
-When you're ready, run:
+---
+
+## 🚀 Getting Started
+
+### 🧩 Prerequisites
+
+Ensure you have the following installed:
+
+- Node.js & npm (or yarn)
+- React Native CLI or Expo (based on project setup)
+- Android Studio / Xcode (for mobile testing)
+- Python if backend uses it)
+- Git
+
+---
+
+## 📲 Setup — Mobile (React Native)
 
 ```bash
-npm run reset-project
+cd native-app
+# install dependencies
+npm install
+# run app (Android)
+npx react-native run-android
+# or run app (iOS)
+npx react-native run-ios
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+🌐 Setup — Web Frontend
+cd frontend
+npm install
+npm start
 
-## Learn more
+🛠️ Setup — Backend (Python)
+📌 Prerequisites
 
-To learn more about developing your project with Expo, look at the following resources:
+Python 3.9+
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+pip
 
-## Join the community
+Virtual environment (recommended)
 
-Join our community of developers creating universal apps.
+🔹 Step 1 — Navigate to backend folder
+cd backend
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+🔹 Step 2 — Create Virtual Environment (Recommended)
+python -m venv venv
+Activate it:
+
+Windows
+venv\Scripts\activate
+Mac/Linux
+source venv/bin/activate
+
+🔹 Step 3 — Install Dependencies
+pip install -r requirements.txt
+
+🔹 Step 4 — Run Backend Server
+uvicorn main:app --reload
