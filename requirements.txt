@@ -1,10 +1,598 @@
-fastapi
-uvicorn
-python-multipart
-opencv-python-headless
-tensorflow
-numpy
-mediapipe
-websockets
-pyautogui
-python-multipart
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View, Text, Dimensions } from 'react-native';
+import { WebView } from 'react-native-webview';
+import { Camera } from 'expo-camera';
+import {TouchableOpacity} from 'react-native';
+
+const { width, height } = Dimensions.get('window');
+
+export default function EyeTrackingScreen() {
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<'SELECT' | 'PC' | 'MOBILE'>('SELECT');
+
+  useEffect(() => {
+    (async () => {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasPermission(status === 'granted');
+    })();
+  }, []);
+
+  if (hasPermission === null) return <View />;
+  if (hasPermission === false) return <Text>No access to camera</Text>;
+  if(mode === 'SELECT'){
+    return(
+        <View style={styles.selectionContainer}>
+      <Text style={styles.title}>QuasarAI - Mode Select</Text>
+      <TouchableOpacity style={[styles.modeBtn, {backgroundColor: '#4f46e5'}]} onPress={() => setMode('PC')}>
+        <Text style={styles.btnText}>PC Control Mode</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={[styles.modeBtn, {backgroundColor: '#059669'}]} onPress={() => setMode('MOBILE')}>
+        <Text style={styles.btnText}>Mobile Dashboard</Text>
+      </TouchableOpacity>
+    </View>
+    )
+  }
+
+  // Aapka poora index.html code yahan as a String
+  // Aapka poora index.html code yahan as a String
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+        <style>
+            body { margin: 0; background: black; overflow: hidden; }
+            /* CURSOR SIZE & VISIBILITY FIX */
+            #cursor { 
+                width: 40px; height: 40px; 
+                background: rgba(255, 0, 0, 0.9); 
+                border: 3px solid white; 
+                border-radius: 50%; 
+                position: fixed; z-index: 999999; 
+                pointer-events: none;
+                transform: translate(-50%, -50%);
+                display: block; 
+            }
+
+            /* Dynamic Opacity: PC Mode mein video gayab (0), Mobile mein dikhega (0.5) */
+            video { 
+                transform: scaleX(-1); 
+                width: 100vw; height: 100vh; 
+                object-fit: cover; 
+                opacity: ${mode === 'PC' ? 0 : 0.5}; 
+            }
+        </style>
+    </head>
+    <body>
+        <div id="cursor"></div>
+        <video id="webcam" autoplay playsinline></video>
+        <script>
+            const socket = new WebSocket('ws://localhost:8000/ws');
+            const video = document.getElementById('webcam');
+            const cursor = document.getElementById('cursor');
+
+            // --- SENSITIVITY CONFIG ---
+            const SENSITIVITY = 3.5; 
+            let blinkCounter = 0;
+
+            const faceMesh = new FaceMesh({locateFile: (file) => \`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/\${file}\`});
+            faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5 });
+            
+            faceMesh.onResults((results) => {
+                if (results.multiFaceLandmarks && results.multiFaceLandmarks[0]) {
+                    const landmarks = results.multiFaceLandmarks[0];
+                    const nose = landmarks[1];
+
+                    // --- SENSITIVITY LOGIC ---
+                    let mappedX = 0.5 + (nose.x - 0.5) * SENSITIVITY;
+                    let mappedY = 0.5 + (nose.y - 0.5) * SENSITIVITY;
+                    
+                    mappedX = Math.max(0, Math.min(1, mappedX));
+                    mappedY = Math.max(0, Math.min(1, mappedY));
+
+                    // --- BLINK DETECTION ---
+                    const topId = landmarks[159];
+                    const bottomId = landmarks[145];
+                    const eyeDist = Math.abs(topId.y - bottomId.y);
+
+                    let currentAction = "move";
+                    if (eyeDist < 0.020) { // Thoda relaxed threshold
+                        blinkCounter++;
+                        if (blinkCounter === 4) currentAction = "click";
+                    } else {
+                        blinkCounter = 0;
+                    }
+
+                    if (socket.readyState === WebSocket.OPEN) {
+                        socket.send(JSON.stringify({ x: mappedX, y: mappedY, action: currentAction,target:"${mode}" }));
+                    }
+                }
+            });
+
+            socket.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data.x !== undefined) {
+                    cursor.style.left = (data.x * window.innerWidth) + "px";
+                    cursor.style.top = (data.y * window.innerHeight) + "px";
+                }
+            };
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+                .then(stream => { 
+                    video.srcObject = stream;
+                    const camera = new Camera(video, {
+                        onFrame: async () => { await faceMesh.send({image: video}); },
+                        width: 640, height: 480
+                    });
+                    camera.start();
+                });
+        </script>
+    </body>
+    </html>
+  `;
+  return (
+    <View style={styles.container}>
+    {/* Mode === 'MOBILE' hone par Test Element dikhega */}
+    {mode === 'MOBILE' && (
+      <View style={styles.testOverlay}>
+        <TouchableOpacity 
+          style={styles.testElement}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.gridText}>TEST BUTTON</Text>
+        </TouchableOpacity>
+      </View>
+    )}
+
+    {/* WebView Layer (Cursor Layer) */}
+      <WebView 
+        originWhitelist={['*']}
+        source={{ html: htmlContent,
+          baseUrl: 'http://localhost'
+         }}
+        style={{ flex: 1 }}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        allowsInlineMediaPlayback={true}
+        mediaPlaybackRequiresUserAction={false}
+        onPermissionRequest={(event) => event.grant()}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#000' },
+  selectionContainer: {
+    position: 'absolute',
+    bottom: 40,
+    left: 20,
+    right: 20,
+    padding: 20,
+    borderRadius: 20,
+
+    // glass effect
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+
+    // soft shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 20,
+    letterSpacing: 0.5,
+  },
+
+  modeBtn: {
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginBottom: 14,
+    alignItems: 'center',
+
+    // subtle depth
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+
+  btnText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+  },
+  // styles object ke end mein ye add kijiye:
+testOverlay: {
+  position: 'absolute',
+  top: 0, left: 0, right: 0, bottom: 0,
+  justifyContent: 'center', // Screen ke center mein dikhane ke liye
+  alignItems: 'center',
+  zIndex: 1,
+},
+testElement: {
+  width: width / 2.8,   // Almost 1/8 of total area logic
+  height: height / 8, 
+  backgroundColor: '#6366f1',
+  justifyContent: 'center',
+  alignItems: 'center',
+  borderRadius: 12,
+  borderWidth: 2,
+  borderColor: 'white',
+},
+overlayWebView: {
+  position: 'absolute',
+  top: 0, left: 0,
+  width: width, height: height,
+  backgroundColor: 'transparent',
+  zIndex: 100, 
+  pointerEvents: 'none', // Ye zaroori hai taaki cursor ke niche click ho sake
+},
+});
+ this is after the frontend works in sync with backned - cursor top-click implemented and finally works according to backend logic.
+
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View, Text, Dimensions } from 'react-native';
+import { WebView } from 'react-native-webview';
+import { Camera } from 'expo-camera';
+import {TouchableOpacity} from 'react-native';
+
+const { width, height } = Dimensions.get('window');
+
+export default function EyeTrackingScreen() {
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<'SELECT' | 'PC' | 'MOBILE'>('SELECT');
+  const [cursorPos, setCursorPos] = useState({ x: width / 2, y: height / 2 });
+
+  const handleMessage = (event: any) => {
+  try {
+    const data = JSON.parse(event.nativeEvent.data);
+    
+    // 1. Update Cursor Position (Only when backend confirms)
+    if (data.x !== undefined && data.y !== undefined) {
+      setCursorPos({
+        x: data.x * width,
+        y: data.y * height,
+      });
+    }
+
+    // 2. Click Logic
+    if (data.executed_action === "click") {
+      // Check if cursor is inside the button (Hit-Testing)
+      const btnX = width / 2; // Button center X
+      const btnY = height / 2; // Button center Y
+      const threshold = 50; // Pixel range for click
+
+      if (Math.abs(data.x * width - btnX) < threshold && 
+          Math.abs(data.y * height - btnY) < threshold) {
+        // alert("MOBILE BUTTON CLICKED!");
+      }
+    }
+  } catch (e) {
+    console.log("Error:", e);
+  }
+};
+
+
+
+  useEffect(() => {
+    (async () => {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasPermission(status === 'granted');
+    })();
+  }, []);
+
+  if (hasPermission === null) return <View />;
+  if (hasPermission === false) return <Text>No access to camera</Text>;
+  if(mode === 'SELECT'){
+    return(
+        <View style={styles.selectionContainer}>
+      <Text style={styles.title}>QuasarAI - Mode Select</Text>
+      <TouchableOpacity style={[styles.modeBtn, {backgroundColor: '#4f46e5'}]} onPress={() => setMode('PC')}>
+        <Text style={styles.btnText}>PC Control Mode</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={[styles.modeBtn, {backgroundColor: '#059669'}]} onPress={() => setMode('MOBILE')}>
+        <Text style={styles.btnText}>Mobile Dashboard</Text>
+      </TouchableOpacity>
+    </View>
+    )
+  }
+
+  // Aapka poora index.html code yahan as a String
+  // Aapka poora index.html code yahan as a String
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+        <style>
+            body { margin: 0; background: black; overflow: hidden; }
+            /* CURSOR SIZE & VISIBILITY FIX */
+          
+
+            /* Dynamic Opacity: PC Mode mein video gayab (0), Mobile mein dikhega (0.5) */
+            video { 
+                transform: scaleX(-1); 
+                width: 100vw; height: 100vh; 
+                object-fit: cover; 
+                opacity: ${mode === 'PC' ? 0 : 0.5}; 
+            }
+        </style>
+    </head>
+    <body>
+        
+        <video id="webcam" autoplay playsinline></video>
+        <script>
+            const socket = new WebSocket('ws://localhost:8000/ws');
+            const video = document.getElementById('webcam');
+            
+
+            // --- SENSITIVITY CONFIG ---
+            const SENSITIVITY = 3.5; 
+            let blinkCounter = 0;
+
+            const faceMesh = new FaceMesh({locateFile: (file) => \`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/\${file}\`});
+            faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5 });
+            
+            faceMesh.onResults((results) => {
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks[0]) {
+        const landmarks = results.multiFaceLandmarks[0];
+        const nose = landmarks[1];
+
+        let mappedX = 0.5 + (nose.x - 0.5) * SENSITIVITY;
+        let mappedY = 0.5 + (nose.y - 0.5) * SENSITIVITY;
+        mappedX = Math.max(0, Math.min(1, mappedX));
+        mappedY = Math.max(0, Math.min(1, mappedY));
+
+        const eyeDist = Math.abs(landmarks[159].y - landmarks[145].y);
+        let currentAction = (eyeDist < 0.020) ? "click" : "move";
+
+        // AB DHAYAN DEIN: Seedha postMessage mat karo. 
+        // Pehle Socket ke raste Backend ko bhejo.
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ 
+                x: mappedX, 
+                y: mappedY, 
+                action: currentAction, 
+                target: "${mode}" 
+            }));
+        }
+    }
+});
+
+socket.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    // Ye data ab Python backend se smoothing ho kar aa raha hai
+    window.ReactNativeWebView.postMessage(JSON.stringify(data));
+};
+
+            
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+                .then(stream => { 
+                    video.srcObject = stream;
+                    const camera = new Camera(video, {
+                        onFrame: async () => { await faceMesh.send({image: video}); },
+                        width: 640, height: 480
+                    });
+                    camera.start();
+                });
+        </script>
+    </body>
+    </html>
+  `;
+  return (
+    <View style={styles.container}>
+    {/* Mode === 'MOBILE' hone par Test Element dikhega */}
+    {mode === 'MOBILE' && (
+      <View style={styles.testOverlay}>
+        <TouchableOpacity 
+          style={styles.testElement}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.gridText}>TEST BUTTON</Text>
+        </TouchableOpacity>
+      </View>
+    )}
+
+    {/* WebView Layer (Cursor Layer) */}
+      <WebView 
+        originWhitelist={['*']}
+        source={{ html: htmlContent,
+          baseUrl: 'http://localhost'
+         }}
+        style={{ flex: 1 , backgroundColor:'transparent',position:'absolute',width:width,height:height,zIndex:5}}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        allowsInlineMediaPlayback={true}
+        transparent= {true}
+        mediaPlaybackRequiresUserAction={false}
+        onPermissionRequest={(event) => event.grant()}
+         onMessage={handleMessage}
+      /><View
+  style={[
+    styles.nativeCursor,
+    { left: cursorPos.x, top: cursorPos.y },
+  ]}
+/>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#000' },
+  selectionContainer: {
+    position: 'absolute',
+    bottom: 40,
+    left: 20,
+    right: 20,
+    padding: 20,
+    borderRadius: 20,
+
+    // glass effect
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+
+    // soft shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 20,
+    letterSpacing: 0.5,
+  },
+
+  modeBtn: {
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginBottom: 14,
+    alignItems: 'center',
+
+    // subtle depth
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
+  },nativeCursor: {
+  position: 'absolute',
+  width: 35,
+  height: 35,
+  borderRadius: 50,
+  backgroundColor: 'rgba(255,0,0,0.9)',
+  borderWidth: 3,
+  borderColor: '#fff',
+  zIndex: 9999,
+  pointerEvents: 'none',
+  transform: [{ translateX: -17.5 }, { translateY: -17.5 }],
+},
+
+
+  btnText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+  },
+  // styles object ke end mein ye add kijiye:
+testOverlay: {
+  position: 'absolute',
+  top: 0, left: 0, right: 0, bottom: 0,
+  justifyContent: 'center', // Screen ke center mein dikhane ke liye
+  alignItems: 'center',
+  zIndex: 1,
+},
+testElement: {
+  width: width / 2.8,   // Almost 1/8 of total area logic
+  height: height / 8, 
+  backgroundColor: '#6366f1',
+  justifyContent: 'center',
+  alignItems: 'center',
+  borderRadius: 12,
+  borderWidth: 2,
+  borderColor: 'white',
+},
+overlayWebView: {
+  position: 'absolute',
+  top: 0, left: 0,
+  width: width, height: height,
+  backgroundColor: 'transparent',
+  zIndex: 100, 
+  pointerEvents: 'none', // Ye zaroori hai taaki cursor ke niche click ho sake
+},
+}); and backend is here
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+import json
+import pyautogui
+
+app = FastAPI()
+
+# CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+ALPHA = 0.4
+prev_x, prev_y = 0.5, 0.5
+pyautogui.FAILSAFE = False
+
+# Screen size detection for cursor mapping
+SCREEN_WIDTH, SCREEN_HEIGHT = pyautogui.size()
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    global prev_x, prev_y
+    await websocket.accept()
+    print("Backend: Connection Accepted!")
+    try:
+        while True:
+            try:
+                data = await websocket.receive_text()
+                coords = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            
+            # 1. Raw Data Extraction
+            raw_x = coords.get("x", 0.5)
+            raw_y = coords.get("y", 0.5)
+            action = coords.get("action", "move")
+            target_mode = coords.get("target", "MOBILE")
+
+            # 2. Mirroring and Smoothing (Calculation pehle zaroori hai)
+            target_x = 1 - raw_x 
+            target_y = raw_y
+            curr_x = (ALPHA * target_x) + (1 - ALPHA) * prev_x
+            curr_y = (ALPHA * target_y) + (1 - ALPHA) * prev_y
+            prev_x, prev_y = curr_x, curr_y
+
+            # 3. System Control Logic (Sirf ek baar)
+            if target_mode == "PC":
+                # Map to screen pixels
+                mouse_x = curr_x * SCREEN_WIDTH
+                mouse_y = curr_y * SCREEN_HEIGHT
+                
+                # Move and Click only if PC mode
+                pyautogui.moveTo(mouse_x, mouse_y, _pause=False)
+                if action == "click":
+                    pyautogui.click()
+                    print(f"Action: PC {action.upper()} Executed")
+            else:
+                # MOBILE mode logic (Sirf logging abhi ke liye)
+                if action == "click":
+                    print("Action: Mobile Interaction Triggered (No PC movement)")
+
+            # 4. Feedback to Frontend
+            await websocket.send_json({
+                "status": "success",
+                "x": round(curr_x, 4),
+                "y": round(curr_y, 4),
+                "executed_action": action
+            })
+
+    except WebSocketDisconnect:
+        print("client disconnected safely")
+    except Exception as e:
+        print(f"WS Error: {e}")

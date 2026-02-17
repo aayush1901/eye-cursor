@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import json
 import pyautogui
 
+
 app = FastAPI()
 
 # CORS Middleware
@@ -13,16 +14,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ALPHA = 0.2
+ALPHA = 0.3
 prev_x, prev_y = 0.5, 0.5
 pyautogui.FAILSAFE = False
 
-# Screen size detection for cursor mapping
 SCREEN_WIDTH, SCREEN_HEIGHT = pyautogui.size()
+
+import time
+
+# Blink State Variables
+is_eye_closed = False
+last_click_time = 0
+CLICK_COOLDOWN = 1.2  # 1.2 seconds tak doosra click ignore hoga
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    global prev_x, prev_y
+    global prev_x, prev_y, is_eye_closed, last_click_time
     await websocket.accept()
     print("Backend: Connection Accepted!")
     try:
@@ -32,35 +39,40 @@ async def websocket_endpoint(websocket: WebSocket):
             
             raw_x = coords.get("x", 0.5)
             raw_y = coords.get("y", 0.5)
-            action = coords.get("action", "move") # Naya field for click detection
+            action = coords.get("action", "move")
+            target_mode = coords.get("target", "MOBILE")
 
-            # Mirroring and Smoothing
+            # 1. Smoothing Logic
             target_x = 1 - raw_x 
-            target_y = raw_y
-
             curr_x = (ALPHA * target_x) + (1 - ALPHA) * prev_x
-            curr_y = (ALPHA * target_y) + (1 - ALPHA) * prev_y
+            curr_y = (ALPHA * raw_y) + (1 - ALPHA) * prev_y
             prev_x, prev_y = curr_x, curr_y
 
-            # --- System Control Block ---
-            # Map normalized (0-1) coordinates to screen pixels
-            mouse_x = curr_x * SCREEN_WIDTH
-            mouse_y = curr_y * SCREEN_HEIGHT
-            
-            # Move the system cursor
-            pyautogui.moveTo(mouse_x, mouse_y, _pause=False)
+            # 2. CLICK DEBOUNCING LOGIC
+            final_action = "move"
+            current_time = time.time()
 
-            # Trigger click if action is sent from frontend
             if action == "click":
-                pyautogui.click()
-                print("Action: Left Click Executed")
-            # ----------------------------
+                # Sirf tab click karein agar pehle eyes open thi aur cooldown khatam ho gaya hai
+                if not is_eye_closed and (current_time - last_click_time > CLICK_COOLDOWN):
+                    final_action = "click"
+                    last_click_time = current_time
+                    is_eye_closed = True
+                    print(f"Verified Click Executed at {target_mode}")
+            else:
+                is_eye_closed = False # Eyes are now open
 
+            # 3. System Control
+            if target_mode == "PC" and final_action == "click":
+                pyautogui.click(curr_x * SCREEN_WIDTH, curr_y * SCREEN_HEIGHT)
+
+            # 4. Feedback to Frontend
             await websocket.send_json({
                 "status": "success",
                 "x": round(curr_x, 4),
                 "y": round(curr_y, 4),
-                "executed_action": action
+                "executed_action": final_action
             })
+
     except Exception as e:
         print(f"WS Error: {e}")
